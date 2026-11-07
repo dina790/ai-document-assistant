@@ -1,0 +1,33 @@
+# Secrets
+.env
+.env.*
+api key*
+*.pem
+*.key
+
+# Python environment and cache
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# Old backups and local repair script
+*_backup.*
+backend.backup*
+backend.before-*
+fix_indentation.py
+
+# Private documents and local storage
+uploads/
+data/
+*.pdf
+*.docx
+*.xlsx
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs and operating-system files
+*.log
+Thumbs.db
+.DS_Store

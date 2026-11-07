@@ -1,0 +1,1208 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>Document Assistant</title>
+
+  <!--
+    These libraries render Markdown and sanitize the resulting HTML.
+    If unavailable, answers are safely displayed as plain text.
+    For a completely offline installation, download these libraries
+    and serve local copies instead.
+  -->
+  <script
+    defer
+    src="https://cdn.jsdelivr.net/npm/marked@15/marked.min.js"
+  ></script>
+  <script
+    defer
+    src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"
+  ></script>
+
+  <style>
+    :root {
+      color-scheme: light;
+      --background: #f3f6fb;
+      --surface: #ffffff;
+      --text: #172033;
+      --muted: #596579;
+      --border: #dce3ed;
+      --primary: #2457d6;
+      --primary-hover: #1945b5;
+      --error: #a51d2d;
+      --success: #146c43;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--background);
+      color: var(--text);
+      font-family: Arial, Helvetica, sans-serif;
+      line-height: 1.55;
+    }
+
+    main {
+      width: min(1100px, calc(100% - 32px));
+      margin: 32px auto;
+    }
+
+    h1,
+    h2,
+    h3 {
+      line-height: 1.25;
+    }
+
+    h1 {
+      margin-bottom: 8px;
+    }
+
+    h2 {
+      margin-top: 0;
+      font-size: 1.25rem;
+    }
+
+    .subtitle,
+    .hint,
+    .metadata {
+      color: var(--muted);
+    }
+
+    .hint,
+    .metadata {
+      font-size: 0.9rem;
+    }
+
+    .card {
+      margin-top: 20px;
+      padding: 24px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      box-shadow: 0 3px 12px rgb(20 40 80 / 4%);
+    }
+
+    .tabs,
+    .actions,
+    .section-heading {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .section-heading {
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+
+    .section-heading h2 {
+      margin: 0;
+    }
+
+    button,
+    select,
+    input,
+    textarea {
+      font: inherit;
+    }
+
+    button {
+      padding: 10px 16px;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      background: var(--primary);
+      color: #fff;
+      cursor: pointer;
+    }
+
+    button:hover:not(:disabled) {
+      background: var(--primary-hover);
+    }
+
+    button.secondary,
+    .tab {
+      background: #fff;
+      color: var(--text);
+      border-color: var(--border);
+    }
+
+    button.secondary:hover:not(:disabled),
+    .tab:hover:not(:disabled) {
+      background: #edf2fc;
+    }
+
+    .tab.active {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: #fff;
+    }
+
+    button:disabled,
+    select:disabled,
+    input:disabled,
+    textarea:disabled {
+      cursor: not-allowed;
+      opacity: 0.65;
+    }
+
+    :focus-visible {
+      outline: 3px solid #91b3ff;
+      outline-offset: 3px;
+    }
+
+    input[type="file"] {
+      display: block;
+      width: 100%;
+      margin: 16px 0;
+      padding: 12px;
+      border: 1px dashed var(--border);
+      border-radius: 8px;
+      background: #fafcff;
+    }
+
+    select,
+    textarea {
+      width: 100%;
+      padding: 11px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #fff;
+      color: var(--text);
+    }
+
+    textarea {
+      min-height: 125px;
+      resize: vertical;
+    }
+
+    .field-label {
+      display: block;
+      margin: 18px 0 8px;
+      font-weight: 600;
+    }
+
+    .checkbox-label {
+      display: flex;
+      align-items: flex-start;
+      gap: 9px;
+      margin: 16px 0;
+    }
+
+    input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      margin-top: 3px;
+      flex-shrink: 0;
+    }
+
+    .document-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .document-item {
+      display: flex;
+      gap: 12px;
+      padding: 14px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #fafcff;
+      cursor: pointer;
+    }
+
+    .document-details {
+      min-width: 0;
+    }
+
+    .document-name {
+      display: block;
+      font-weight: 600;
+      overflow-wrap: anywhere;
+    }
+
+    .document-meta {
+      display: block;
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+
+    .empty-state {
+      margin: 0;
+      padding: 20px;
+      border: 1px dashed var(--border);
+      border-radius: 8px;
+      color: var(--muted);
+    }
+
+    .status {
+      margin: 14px 0 0;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    .status:empty {
+      display: none;
+    }
+
+    .status.error {
+      color: var(--error);
+    }
+
+    .status.success {
+      color: var(--success);
+    }
+
+    .answer {
+      overflow-x: auto;
+      overflow-wrap: anywhere;
+    }
+
+    .answer > :first-child {
+      margin-top: 0;
+    }
+
+    .answer table {
+      width: 100%;
+      margin: 16px 0;
+      border-collapse: collapse;
+      font-size: 0.95rem;
+    }
+
+    .answer th,
+    .answer td {
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    .answer th {
+      background: #edf2fc;
+      font-weight: 600;
+    }
+
+    .answer tbody tr:nth-child(even) {
+      background: #f8faff;
+    }
+
+    .answer pre {
+      padding: 14px;
+      overflow-x: auto;
+      border-radius: 8px;
+      background: #f1f4f9;
+    }
+
+    .answer pre.plain-answer {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      font-family: inherit;
+    }
+
+    .answer code {
+      font-size: 0.9em;
+    }
+
+    .answer blockquote {
+      margin-left: 0;
+      padding-left: 16px;
+      border-left: 4px solid var(--border);
+      color: var(--muted);
+    }
+
+    footer {
+      padding: 20px 0;
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+
+    @media (max-width: 600px) {
+      main {
+        width: calc(100% - 20px);
+        margin-top: 20px;
+      }
+
+      .card {
+        padding: 16px;
+      }
+
+      .actions button {
+        flex-grow: 1;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <main>
+    <header>
+      <h1>Document Assistant</h1>
+
+      <p class="subtitle">
+        Upload PDF, Excel, or Word files. Ask questions, compare
+        documents, or calculate supported Excel totals in Python.
+      </p>
+
+      <p id="healthStatus" class="hint" role="status">
+        Checking backend…
+      </p>
+    </header>
+
+    <section class="card" aria-labelledby="uploadHeading">
+      <h2 id="uploadHeading">1. Upload documents</h2>
+
+      <div class="tabs" role="group" aria-label="Document type">
+        <button
+          type="button"
+          class="tab active"
+          data-type="pdf"
+          aria-pressed="true"
+        >
+          PDF
+        </button>
+
+        <button
+          type="button"
+          class="tab"
+          data-type="xlsx"
+          aria-pressed="false"
+        >
+          Excel
+        </button>
+
+        <button
+          type="button"
+          class="tab"
+          data-type="docx"
+          aria-pressed="false"
+        >
+          Word
+        </button>
+      </div>
+
+      <label class="field-label" for="fileInput">
+        Choose files
+      </label>
+
+      <input
+        id="fileInput"
+        type="file"
+        accept=".pdf"
+        multiple
+        aria-describedby="uploadHint"
+      >
+
+      <p id="uploadHint" class="hint">
+        Select 1–10 PDF files. Maximum 10 MB per file.
+      </p>
+
+      <button id="uploadButton" type="button">
+        Upload documents
+      </button>
+
+      <p
+        id="uploadStatus"
+        class="status"
+        role="status"
+        aria-live="polite"
+      ></p>
+    </section>
+
+    <section class="card" aria-labelledby="documentsHeading">
+      <div class="section-heading">
+        <h2 id="documentsHeading">2. Select documents</h2>
+
+        <div class="actions">
+          <button
+            id="selectAllButton"
+            type="button"
+            class="secondary"
+          >
+            Select up to 10
+          </button>
+
+          <button
+            id="clearSelectionButton"
+            type="button"
+            class="secondary"
+          >
+            Clear selection
+          </button>
+        </div>
+      </div>
+
+      <p id="selectionCount" class="hint">
+        0 documents selected.
+      </p>
+
+      <div id="documentList" class="document-list"></div>
+
+      <p
+        id="selectionStatus"
+        class="status"
+        role="status"
+        aria-live="polite"
+      ></p>
+    </section>
+
+    <section class="card" aria-labelledby="questionHeading">
+      <h2 id="questionHeading">3. Ask or calculate</h2>
+
+      <label class="field-label" for="answerMode">
+        Answer mode
+      </label>
+
+      <select id="answerMode" aria-describedby="modeHint">
+        <option value="question">
+          General question — AI
+        </option>
+
+        <option value="excel_totals" disabled>
+          Excel totals — Python calculation
+        </option>
+      </select>
+
+      <p id="modeHint" class="hint">
+        General questions use Ollama. AI-generated calculations
+        and citations should be checked against the source.
+      </p>
+
+      <label class="field-label" for="questionInput">
+        Question
+      </label>
+
+      <textarea
+        id="questionInput"
+        maxlength="2000"
+        placeholder="For example: Summarize these documents and cite the sources."
+      ></textarea>
+
+      <label class="checkbox-label" for="tableFormat">
+        <input id="tableFormat" type="checkbox" checked>
+        <span>Format answer with tables</span>
+      </label>
+
+      <div class="actions">
+        <button id="askButton" type="button">
+          Ask / Compare
+        </button>
+      </div>
+
+      <p
+        id="askStatus"
+        class="status"
+        role="status"
+        aria-live="polite"
+      ></p>
+    </section>
+
+    <section class="card" aria-labelledby="answerHeading">
+      <div class="section-heading">
+        <h2 id="answerHeading">Answer</h2>
+
+        <button
+          id="copyAnswerButton"
+          type="button"
+          class="secondary"
+          disabled
+        >
+          Copy answer
+        </button>
+      </div>
+
+      <p id="answerMetadata" class="metadata"></p>
+
+      <div id="answerOutput" class="answer">
+        <p class="hint">Your answer will appear here.</p>
+      </div>
+
+      <p id="copyStatus" class="status" role="status"></p>
+    </section>
+
+    <footer>
+      Documents are stored temporarily in backend memory.
+      Restarting the backend clears them. This page does not
+      restore its document list after a refresh.
+      <br>
+      PDF extraction requires selectable text. Word extraction
+      reads body paragraphs and top-level tables. Excel formulas
+      require saved results.
+    </footer>
+  </main>
+
+  <script>
+    "use strict";
+
+    const MAX_FILE_SIZE = 10 * 1024 * 1024;
+    const MAX_FILES_PER_UPLOAD = 10;
+    const MAX_SELECTED_DOCUMENTS = 10;
+
+    const typeNames = {
+      pdf: "PDF",
+      xlsx: "Excel (.xlsx)",
+      docx: "Word (.docx)"
+    };
+
+    const uploadedDocuments = [];
+    const selectedDocumentIds = new Set();
+
+    let activeType = "pdf";
+    let busy = false;
+    let lastAnswer = "";
+
+    const healthStatus = document.getElementById("healthStatus");
+    const tabs = [...document.querySelectorAll(".tab")];
+
+    const fileInput = document.getElementById("fileInput");
+    const uploadHint = document.getElementById("uploadHint");
+    const uploadButton = document.getElementById("uploadButton");
+    const uploadStatus = document.getElementById("uploadStatus");
+
+    const documentList = document.getElementById("documentList");
+    const selectionCount = document.getElementById("selectionCount");
+    const selectionStatus = document.getElementById("selectionStatus");
+
+    const selectAllButton = document.getElementById("selectAllButton");
+    const clearSelectionButton =
+      document.getElementById("clearSelectionButton");
+
+    const answerMode = document.getElementById("answerMode");
+    const excelTotalsOption =
+      answerMode.querySelector('option[value="excel_totals"]');
+
+    const modeHint = document.getElementById("modeHint");
+    const questionInput = document.getElementById("questionInput");
+    const tableFormat = document.getElementById("tableFormat");
+    const askButton = document.getElementById("askButton");
+    const askStatus = document.getElementById("askStatus");
+
+    const answerOutput = document.getElementById("answerOutput");
+    const answerMetadata = document.getElementById("answerMetadata");
+    const copyAnswerButton = document.getElementById("copyAnswerButton");
+    const copyStatus = document.getElementById("copyStatus");
+
+    function setStatus(element, message = "", kind = "") {
+      element.textContent = message;
+      element.className = kind ? `status ${kind}` : "status";
+    }
+
+    function visibleDocuments() {
+      return uploadedDocuments.filter(
+        document => document.file_type === activeType
+      );
+    }
+
+    function selectedIds() {
+      return visibleDocuments()
+        .filter(document =>
+          selectedDocumentIds.has(document.document_id)
+        )
+        .map(document => document.document_id);
+    }
+
+    function updateSelectionCount() {
+      selectionCount.textContent =
+        `${selectedIds().length} of ` +
+        `${visibleDocuments().length} documents selected ` +
+        `(maximum ${MAX_SELECTED_DOCUMENTS}).`;
+    }
+
+    function updateModeControls() {
+      const calculationMode = answerMode.value === "excel_totals";
+
+      excelTotalsOption.disabled = activeType !== "xlsx";
+      questionInput.disabled = busy || calculationMode;
+
+      if (calculationMode) {
+        modeHint.textContent =
+          "Calculates all parsed detail rows in every selected " +
+          "worksheet. Requires headers in the first nonempty row: " +
+          "Category, Quantity OR Quantity_Sold, and Unit_Price_USD. " +
+          "Item is optional. Uses saved values, includes hidden and " +
+          "filtered rows, and keeps worksheet totals separate. " +
+          "Question-box filters are not applied. Use compatible " +
+          "quantity units and remove embedded totals or notes.";
+
+        askButton.textContent = busy
+          ? "Calculating…"
+          : "Calculate Excel totals";
+      } else {
+        modeHint.textContent =
+          "General questions use Ollama. AI-generated calculations " +
+          "and citations should be checked against the source.";
+
+        askButton.textContent = busy
+          ? "Please wait…"
+          : "Ask / Compare";
+      }
+    }
+
+    function setBusy(value) {
+      busy = value;
+
+      tabs.forEach(tab => {
+        tab.disabled = busy;
+      });
+
+      fileInput.disabled = busy;
+      uploadButton.disabled = busy;
+      selectAllButton.disabled = busy;
+      clearSelectionButton.disabled = busy;
+      answerMode.disabled = busy;
+      tableFormat.disabled = busy;
+      askButton.disabled = busy;
+      copyAnswerButton.disabled = busy || !lastAnswer;
+
+      documentList
+        .querySelectorAll('input[type="checkbox"]')
+        .forEach(checkbox => {
+          checkbox.disabled = busy;
+        });
+
+      updateModeControls();
+    }
+
+    function renderDocuments() {
+      documentList.replaceChildren();
+
+      const documents = visibleDocuments();
+
+      if (!documents.length) {
+        const empty = document.createElement("p");
+        empty.className = "empty-state";
+        empty.textContent =
+          `No ${typeNames[activeType]} documents uploaded yet.`;
+
+        documentList.appendChild(empty);
+        updateSelectionCount();
+        return;
+      }
+
+      for (const document of documents) {
+        const label = window.document.createElement("label");
+        label.className = "document-item";
+
+        const checkbox = window.document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.checked =
+          selectedDocumentIds.has(document.document_id);
+        checkbox.disabled = busy;
+
+        checkbox.addEventListener("change", () => {
+          setStatus(selectionStatus);
+
+          if (checkbox.checked) {
+            if (selectedIds().length >= MAX_SELECTED_DOCUMENTS) {
+              checkbox.checked = false;
+
+              setStatus(
+                selectionStatus,
+                `Select no more than ${MAX_SELECTED_DOCUMENTS} documents.`,
+                "error"
+              );
+              return;
+            }
+
+            selectedDocumentIds.add(document.document_id);
+          } else {
+            selectedDocumentIds.delete(document.document_id);
+          }
+
+          updateSelectionCount();
+        });
+
+        const details = window.document.createElement("span");
+        details.className = "document-details";
+
+        const name = window.document.createElement("span");
+        name.className = "document-name";
+        name.textContent = document.filename;
+
+        const metadata = window.document.createElement("span");
+        metadata.className = "document-meta";
+
+        const count = document.section_count ?? document.page_count;
+        const unit = document.file_type === "pdf"
+          ? "pages"
+          : "extracted sections";
+
+        metadata.textContent =
+          `${typeNames[document.file_type]} • ${count} ${unit}`;
+
+        details.append(name, metadata);
+        label.append(checkbox, details);
+        documentList.appendChild(label);
+      }
+
+      updateSelectionCount();
+    }
+
+    function activateType(type) {
+      activeType = type;
+
+      // Avoid invisible selections from another file-type tab.
+      selectedDocumentIds.clear();
+
+      tabs.forEach(tab => {
+        const active = tab.dataset.type === type;
+        tab.classList.toggle("active", active);
+        tab.setAttribute("aria-pressed", String(active));
+      });
+
+      fileInput.accept = `.${type}`;
+      fileInput.value = "";
+
+      uploadHint.textContent =
+        `Select 1–10 ${typeNames[type]} files. ` +
+        "Maximum 10 MB per file.";
+
+      if (type !== "xlsx") {
+        answerMode.value = "question";
+      }
+
+      setStatus(uploadStatus);
+      setStatus(selectionStatus);
+      setStatus(askStatus);
+
+      updateModeControls();
+      renderDocuments();
+    }
+
+    function describeError(detail, fallback) {
+      if (typeof detail === "string") {
+        return detail;
+      }
+
+      if (Array.isArray(detail)) {
+        return detail.map(error => {
+          const location = Array.isArray(error.loc)
+            ? error.loc.join(".")
+            : "Request";
+
+          return `${location}: ${error.msg || "Invalid value"}`;
+        }).join("\n");
+      }
+
+      return fallback;
+    }
+
+    async function readJsonResponse(response) {
+      let data;
+
+      try {
+        data = await response.json();
+      } catch {
+        throw new Error(
+          `The server returned a non-JSON response ` +
+          `(HTTP ${response.status}).`
+        );
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          describeError(
+            data?.detail,
+            `Request failed (HTTP ${response.status}).`
+          )
+        );
+      }
+
+      return data;
+    }
+
+    async function checkHealth() {
+      try {
+        const response = await fetch("/health", {
+          cache: "no-store"
+        });
+
+        const data = await readJsonResponse(response);
+
+        healthStatus.textContent =
+          `Backend connected • Stored documents: ` +
+          `${data.stored_documents}/${data.max_documents}. ` +
+          "Ollama availability is checked when asking an AI question.";
+      } catch {
+        healthStatus.textContent =
+          "Backend unavailable. Start the backend and open this " +
+          "page at http://127.0.0.1:8000/assistant, not as a local file.";
+      }
+    }
+
+    function renderAnswer(answer) {
+      answerOutput.replaceChildren();
+
+      if (window.marked && window.DOMPurify) {
+        const markdownHtml = window.marked.parse(answer, {
+          gfm: true,
+          breaks: false
+        });
+
+        const safeHtml = window.DOMPurify.sanitize(markdownHtml, {
+          USE_PROFILES: { html: true },
+
+          // Avoid model-generated external images or interactive HTML.
+          FORBID_TAGS: [
+            "img", "picture", "source",
+            "form", "input", "button", "select", "textarea",
+            "iframe", "object", "embed",
+            "audio", "video", "style"
+          ],
+          FORBID_ATTR: ["style"]
+        });
+
+        answerOutput.innerHTML = safeHtml;
+
+        answerOutput.querySelectorAll("a").forEach(link => {
+          link.setAttribute("target", "_blank");
+          link.setAttribute("rel", "noopener noreferrer");
+        });
+      } else {
+        const text = document.createElement("pre");
+        text.className = "plain-answer";
+        text.textContent = answer;
+        answerOutput.appendChild(text);
+      }
+    }
+
+    tabs.forEach(tab => {
+      tab.addEventListener("click", () => {
+        activateType(tab.dataset.type);
+      });
+    });
+
+    answerMode.addEventListener("change", () => {
+      setStatus(askStatus);
+      updateModeControls();
+    });
+
+    selectAllButton.addEventListener("click", () => {
+      selectedDocumentIds.clear();
+
+      const documents = visibleDocuments();
+
+      documents
+        .slice(0, MAX_SELECTED_DOCUMENTS)
+        .forEach(document => {
+          selectedDocumentIds.add(document.document_id);
+        });
+
+      setStatus(
+        selectionStatus,
+        documents.length > MAX_SELECTED_DOCUMENTS
+          ? "Selected the first 10 documents in this tab."
+          : ""
+      );
+
+      renderDocuments();
+    });
+
+    clearSelectionButton.addEventListener("click", () => {
+      selectedDocumentIds.clear();
+      setStatus(selectionStatus);
+      renderDocuments();
+    });
+
+    uploadButton.addEventListener("click", async () => {
+      const files = [...fileInput.files];
+
+      setStatus(uploadStatus);
+      setStatus(selectionStatus);
+
+      if (
+        files.length < 1 ||
+        files.length > MAX_FILES_PER_UPLOAD
+      ) {
+        setStatus(
+          uploadStatus,
+          `Please choose between 1 and ${MAX_FILES_PER_UPLOAD} files.`,
+          "error"
+        );
+        return;
+      }
+
+      for (const file of files) {
+        if (!file.name.toLowerCase().endsWith(`.${activeType}`)) {
+          setStatus(
+            uploadStatus,
+            `Please choose only ${typeNames[activeType]} files ` +
+            "in this tab.",
+            "error"
+          );
+          return;
+        }
+
+        if (file.size === 0) {
+          setStatus(
+            uploadStatus,
+            `${file.name} is empty.`,
+            "error"
+          );
+          return;
+        }
+
+        if (file.size > MAX_FILE_SIZE) {
+          setStatus(
+            uploadStatus,
+            `${file.name} exceeds the 10 MB limit.`,
+            "error"
+          );
+          return;
+        }
+      }
+
+      const formData = new FormData();
+
+      files.forEach(file => {
+        formData.append("files", file);
+      });
+
+      setBusy(true);
+      setStatus(uploadStatus, "Uploading and extracting text…");
+
+      try {
+        const response = await fetch("/upload-multiple", {
+          method: "POST",
+          body: formData
+        });
+
+        const data = await readJsonResponse(response);
+
+        if (!Array.isArray(data.results)) {
+          throw new Error("The server returned unexpected upload results.");
+        }
+
+        const messages = [];
+        let successes = 0;
+        let errors = 0;
+
+        for (const result of data.results) {
+          if (result.status === "success") {
+            successes += 1;
+
+            uploadedDocuments.push({
+              document_id: result.document_id,
+              filename: result.filename,
+              file_type: result.file_type,
+              page_count: result.page_count,
+              section_count: result.section_count
+            });
+
+            if (selectedIds().length < MAX_SELECTED_DOCUMENTS) {
+              selectedDocumentIds.add(result.document_id);
+            }
+
+            messages.push(`Uploaded: ${result.filename}`);
+          } else {
+            errors += 1;
+
+            messages.push(
+              `Failed: ${result.filename || "Unnamed file"} — ` +
+              describeError(result.error, "Upload failed.")
+            );
+          }
+        }
+
+        setStatus(
+          uploadStatus,
+          `${successes} uploaded; ${errors} failed.\n` +
+          messages.join("\n"),
+          errors ? "error" : "success"
+        );
+
+        fileInput.value = "";
+        renderDocuments();
+        void checkHealth();
+      } catch (error) {
+        setStatus(
+          uploadStatus,
+          error.message || "Upload failed. Check the backend connection.",
+          "error"
+        );
+      } finally {
+        setBusy(false);
+      }
+    });
+
+    askButton.addEventListener("click", async () => {
+      setStatus(askStatus);
+      setStatus(copyStatus);
+
+      const ids = selectedIds();
+      const calculationMode = answerMode.value === "excel_totals";
+      const useTables = tableFormat.checked;
+
+      if (!ids.length) {
+        setStatus(
+          askStatus,
+          "Select at least one uploaded document.",
+          "error"
+        );
+        return;
+      }
+
+      if (calculationMode && activeType !== "xlsx") {
+        setStatus(
+          askStatus,
+          "Excel totals mode accepts only Excel (.xlsx) files.",
+          "error"
+        );
+        return;
+      }
+
+      const question = calculationMode
+        ? "Calculate row values and category totals for all detail rows."
+        : questionInput.value.trim();
+
+      if (!question) {
+        setStatus(askStatus, "Please enter a question.", "error");
+        questionInput.focus();
+        return;
+      }
+
+      // The existing AI backend reads formatting instructions from
+      // the question. The Python totals branch uses response_format.
+      const formatInstruction = useTables
+        ? "\n\nUse Markdown tables when helpful."
+        : "\n\nUse plain paragraphs or lists, not Markdown tables.";
+
+      const requestQuestion = calculationMode
+        ? question
+        : question + formatInstruction;
+
+      if (requestQuestion.length > 2000) {
+        setStatus(
+          askStatus,
+          "Please shorten the question slightly to leave room for " +
+          "the formatting instruction.",
+          "error"
+        );
+        return;
+      }
+
+      lastAnswer = "";
+      answerMetadata.textContent = "";
+      answerOutput.replaceChildren();
+
+      const waiting = document.createElement("p");
+      waiting.className = "hint";
+      waiting.textContent = calculationMode
+        ? "Calculating worksheet totals…"
+        : "Waiting for Ollama…";
+
+      answerOutput.appendChild(waiting);
+
+      setBusy(true);
+      setStatus(
+        askStatus,
+        calculationMode
+          ? "Calculating directly in Python…"
+          : "Generating an answer. Ollama may take up to a few minutes."
+      );
+
+      try {
+        const response = await fetch("/ask", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            question: requestQuestion,
+            document_ids: ids,
+            answer_mode: answerMode.value,
+            response_format: useTables ? "table" : "text"
+          })
+        });
+
+        const data = await readJsonResponse(response);
+
+        if (
+          typeof data.answer !== "string" ||
+          !data.answer.trim()
+        ) {
+          throw new Error("The server returned an empty answer.");
+        }
+
+        // Older backends may ignore the new request fields.
+        // Do not label an AI answer as a Python calculation.
+        if (
+          calculationMode &&
+          data.calculation_engine !== "python_decimal"
+        ) {
+          throw new Error(
+            "The backend did not confirm Python calculation mode. " +
+            "Add excel_calculations.py and the updated /ask branch, " +
+            "then restart the backend."
+          );
+        }
+
+        lastAnswer = data.answer.trim();
+        renderAnswer(lastAnswer);
+
+        answerMetadata.textContent = calculationMode
+          ? "Engine: Python Decimal • " +
+            "Calculated from stored worksheet values, not by AI."
+          : `Model: ${data.model || "Ollama"} • ` +
+            "AI-generated answer; verify important facts and totals.";
+
+        setStatus(
+          askStatus,
+          calculationMode
+            ? "Calculation complete."
+            : "Answer ready.",
+          "success"
+        );
+      } catch (error) {
+        answerOutput.replaceChildren();
+
+        const message = document.createElement("p");
+        message.className = "hint";
+        message.textContent =
+          "No answer generated. Review the error above and try again.";
+
+        answerOutput.appendChild(message);
+
+        setStatus(
+          askStatus,
+          error.message || "Request failed. Check the backend connection.",
+          "error"
+        );
+      } finally {
+        setBusy(false);
+      }
+    });
+
+    copyAnswerButton.addEventListener("click", async () => {
+      if (!lastAnswer) {
+        return;
+      }
+
+      try {
+        await navigator.clipboard.writeText(lastAnswer);
+
+        setStatus(
+          copyStatus,
+          "Answer copied as Markdown text.",
+          "success"
+        );
+      } catch {
+        setStatus(
+          copyStatus,
+          "Clipboard access was unavailable. Select and copy the " +
+          "answer manually.",
+          "error"
+        );
+      }
+    });
+
+    renderDocuments();
+    updateModeControls();
+    void checkHealth();
+  </script>
+</body>
+</html>
