@@ -1,3 +1,5 @@
+import logging
+import os
 import html
 import json
 import re
@@ -55,6 +57,9 @@ Rules:
    - Include evidence with the supplied source_id and an exact,
      nonempty quote copied from that source's text.
    - The quoted text must support the answer.
+   - Copy quotes directly from the source's text value.
+     Preserve punctuation and cell order. Do not reformat,
+     reorder, or skip values within a quote.
 5. If a fact is absent:
    - Set status to "not_stated".
    - Set answer to "Not stated in the document."
@@ -65,6 +70,13 @@ Rules:
 8. For a summary, use one item per key point.
 9. For calculations, show the calculation in the answer and
    quote the inputs as evidence. Do not combine incompatible units.
+10. The field must describe the requested fact, not a source ID.
+11. For a quantity-sold question, return the Quantity_Sold value
+    for the requested item. Do not return the item name as the
+    answer, and do not list other products.
+12. For labeled spreadsheet rows, quote a contiguous excerpt
+    containing the requested item's name and the requested
+    column's value. Copy the labels and punctuation exactly.
 """
 
 
@@ -127,8 +139,10 @@ def build_sources(selected_documents):
                 continue
 
             # Existing Excel extraction stores two introductory
-            # lines, followed by one JSON object per Excel row.
-            # Split these into individual sources for row citations.
+            # Excel extraction stores two introductory lines,
+            # followed by one JSON object per Excel row.
+            headers = None
+
             for line in section["text"].splitlines()[2:]:
                 if not line.strip():
                     continue
@@ -151,6 +165,44 @@ def build_sources(selected_documents):
                         "Upload the workbook again.",
                     )
 
+                values = [
+                    "" if cell is None else str(cell)
+                    for cell in row["cells"]
+                ]
+
+                # Recognize this sales table's header row instead
+                # of assuming every workbook starts with headers.
+                normalized_values = [
+                    value.strip().casefold()
+                    for value in values
+                ]
+
+                is_header = (
+                    "item" in normalized_values
+                    and "quantity_sold" in normalized_values
+                )
+
+                if is_header:
+                    headers = [value.strip() for value in values]
+                    row_text = "Columns: " + "; ".join(headers)
+
+                elif headers is not None:
+                    parts = []
+
+                    for index, value in enumerate(values):
+                        label = (
+                            headers[index]
+                            if index < len(headers) and headers[index]
+                            else f"Column {index + 1}"
+                        )
+                        parts.append(f"{label}: {value}")
+
+                    row_text = "; ".join(parts)
+
+                else:
+                    # Other table layouts retain readable row text.
+                    row_text = ", ".join(values)
+
                 add_source(
                     document_id,
                     document,
@@ -158,7 +210,7 @@ def build_sources(selected_documents):
                         "worksheet": section["worksheet"],
                         "excel_row": row_number,
                     },
-                    line,
+                    row_text,
                 )
 
     return sources
@@ -221,14 +273,37 @@ def render_answer(structured, sources, response_format):
             for evidence in item.evidence:
                 source = sources_by_id.get(evidence.source_id)
                 quote = normalize_quote(evidence.quote)
+                reason = None
 
-                if (
-                    source is None
-                    or not quote
-                    or quote not in normalize_quote(source["text"])
-                ):
-                    # Do not disguise invalid evidence as a fact
-                    # being absent from the document.
+                if source is None:
+                    reason = "unknown_source_id"
+                elif not quote:
+                    reason = "empty_quote"
+                elif quote not in normalize_quote(source["text"]):
+                    reason = "quote_mismatch"
+
+                if reason is not None:
+                    if os.getenv("DOCUMENT_DEBUG_EVIDENCE") == "1":
+                        logger = logging.getLogger(__name__)
+
+                        logger.warning(
+                            "Evidence rejected: reason=%s source_id=%r "
+                            "available_ids=%r",
+                            reason,
+                            evidence.source_id,
+                            list(sources_by_id),
+                        )
+                        logger.warning(
+                            "Model quote (first 500 characters): %r",
+                            evidence.quote[:500],
+                        )
+
+                        if source is not None:
+                            logger.warning(
+                                "Source text (first 1000 characters): %r",
+                                source["text"][:1000],
+                            )
+
                     raise HTTPException(
                         502,
                         "The model returned a source reference or "
@@ -238,6 +313,7 @@ def render_answer(structured, sources, response_format):
 
                 if source["citation"] not in citations:
                     citations.append(source["citation"])
+
 
         # Remove exact duplicate items. This does not detect all
         # duplicates expressed using different field names.
